@@ -357,6 +357,7 @@ struct LogMessage::LogMessageData  {
   void operator=(const LogMessageData&);
 };
 
+// 利用这个锁来实现同一时间只能有一个线程进行日志输出, 文件写操作
 // A mutex that allows only one thread to log at a time, to keep things from
 // getting jumbled.  Some other very uncommon logging operations (like
 // changing the destination file for log messages of a given severity) also
@@ -367,6 +368,7 @@ static Mutex log_mutex;
 // Number of messages sent at each severity.  Under log_mutex.
 int64 LogMessage::num_messages_[NUM_SEVERITIES] = {0, 0, 0, 0};
 
+// 确保磁盘满的时候停掉写操作
 // Globally disable log writing (if disk is full)
 static bool stop_writing = false;
 
@@ -389,6 +391,7 @@ base::Logger::~Logger() {
 
 namespace {
 
+// 封装了所有的文件系统相关的状态
 // Encapsulates all file-system related state
 class LogFileObject : public base::Logger {
  public:
@@ -445,6 +448,7 @@ class LogFileObject : public base::Logger {
 
 class LogDestination {
  public:
+  // @1Feng why use friend class
   friend class LogMessage;
   friend void ReprintFatalMessage();
   friend base::Logger* base::GetLogger(LogSeverity);
@@ -578,6 +582,7 @@ inline void LogDestination::FlushLogFilesUnsafe(int min_severity) {
   }
 }
 
+// 所有大于 min_severity 的级别都做下flush操作，确保写入
 inline void LogDestination::FlushLogFiles(int min_severity) {
   // Prevent any subtle race conditions by wrapping a mutex lock around
   // all this stuff.
@@ -621,6 +626,7 @@ inline void LogDestination::RemoveLogSink(LogSink *destination) {
   MutexLock l(&sink_mutex_);
   // This doesn't keep the sinks in order, but who cares?
   if (sinks_) {
+    // 置换到尾部，然后把最后一个元素pop出去
     for (int i = sinks_->size() - 1; i >= 0; i--) {
       if ((*sinks_)[i] == destination) {
         (*sinks_)[i] = (*sinks_)[sinks_->size() - 1];
@@ -951,6 +957,7 @@ bool LogFileObject::CreateLogfile(const string& time_pid_string) {
   return true;  // Everything worked
 }
 
+// 真正写入文件的环节
 void LogFileObject::Write(bool force_flush,
                           time_t timestamp,
                           const char* message,
@@ -962,6 +969,7 @@ void LogFileObject::Write(bool force_flush,
     return;
   }
 
+  // 如果日志文件大小超过限制，或者文件pid变化（一般是被删除）
   if (static_cast<int>(file_length_ >> 20) >= MaxLogSize() ||
       PidHasChanged()) {
     if (file_ != NULL) fclose(file_);
@@ -972,6 +980,7 @@ void LogFileObject::Write(bool force_flush,
 
   // If there's no destination file, make one before outputting
   if (file_ == NULL) {
+    // 每次滚动都会置 rollover_attempt = kRolloverAttemptFrequency-1
     // Try to rollover the log file every 32 log messages.  The only time
     // this could matter would be when we have trouble creating the log
     // file.  If that happens, we'll lose lots of log messages, of course!
@@ -1003,6 +1012,10 @@ void LogFileObject::Write(bool force_flush,
         return;
       }
     } else {
+      // 没有指定 base_filename_时会使用默认规则生成base_filename
+      // base_filename_ = dir/program_invocation_shortname.hostname.username.log.severity.
+      // log_filename = base_filename_ + extension(可配置) + time_pid
+
       // If no base filename for logs of this severity has been set, use a
       // default base filename of
       // "<program name>.<hostname>.<user name>.log.<severity level>.".  So
@@ -1094,6 +1107,7 @@ void LogFileObject::Write(bool force_flush,
       bytes_since_flush_ += message_len;
     }
   } else {
+    // 每隔一段时间看下磁盘是否释放了空间
     if ( CycleClock_Now() >= next_flush_time_ )
       stop_writing = false;  // check to see if disk has free space.
     return;  // no need to flush
@@ -1109,7 +1123,9 @@ void LogFileObject::Write(bool force_flush,
     if (FLAGS_drop_log_memory) {
       if (file_length_ >= logging::kPageSize) {
         // don't evict the most recent page
+        // @1Feng 这行没看懂
         uint32 len = file_length_ & ~(logging::kPageSize - 1);
+        // 声明不会去访问这些数据,关闭内核优化
         posix_fadvise(fileno(file_), 0, len, POSIX_FADV_DONTNEED);
       }
     }
@@ -1789,6 +1805,7 @@ static void GetTempDirectories(vector<string>* list) {
 
 static vector<string>* logging_directories_list;
 
+// 只有不指定日志的路径时，才会去获取temp的路径，只有temp路径才会是多个选项(vector)
 const vector<string>& GetLoggingDirectories() {
   // Not strictly thread-safe but we're called early in InitGoogle().
   if (logging_directories_list == NULL) {

@@ -323,6 +323,7 @@ void InitGoogleLoggingUtilities(const char* argv0) {
 #ifdef OS_WINDOWS
   if (!slash)  slash = strrchr(argv0, '\\');
 #endif
+  // 获取可执行程序的名称
   g_program_invocation_short_name = slash ? slash + 1 : argv0;
   g_main_thread_id = pthread_self();
 

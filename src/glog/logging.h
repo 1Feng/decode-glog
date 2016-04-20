@@ -138,11 +138,13 @@ typedef unsigned __int64 uint64;
 #endif
 #endif
 
+// 通常的用法
 // Make a bunch of macros for logging.  The way to log things is to stream
 // things to LOG(<a particular severity level>).  E.g.,
 //
 //   LOG(INFO) << "Found " << num_cookies << " cookies";
 //
+// 也可以存在vector里
 // You can capture log messages in a string, rather than reporting them
 // immediately:
 //
@@ -152,6 +154,7 @@ typedef unsigned __int64 uint64;
 // This pushes back the new error onto 'errors'; if given a NULL pointer,
 // it reports the error via LOG(ERROR).
 //
+// 可以通过判断条件来输出日志
 // You can also do conditional logging:
 //
 //   LOG_IF(INFO, num_cookies > 10) << "Got lots of cookies";
@@ -165,18 +168,21 @@ typedef unsigned __int64 uint64;
 // times it is executed.  Note that the special google::COUNTER value is used
 // to identify which repetition is happening.
 //
+// 每N次输出日志
 // You can also do occasional conditional logging (log every n'th
 // occurrence of an event, when condition is satisfied):
 //
 //   LOG_IF_EVERY_N(INFO, (size > 1024), 10) << "Got the " << google::COUNTER
 //                                           << "th big cookie";
-//
+// 前N次输出日志
 // You can log messages the first N times your code executes a line. E.g.
 //
 //   LOG_FIRST_N(INFO, 20) << "Got the " << google::COUNTER << "th cookie";
 //
 // Outputs log messages for the first 20 times it is executed.
 //
+// 除非特殊情况，尽量不要用SYSLOG， SYSLOG_IF...等 syslog级别的日志，会有
+// 很大的性能问题
 // Analogous SYSLOG, SYSLOG_IF, and SYSLOG_EVERY_N macros are available.
 // These log to syslog as well as to the normal logs.  If you use these at
 // all, you need to be aware that syslog can drastically reduce performance,
@@ -184,6 +190,7 @@ typedef unsigned __int64 uint64;
 // unless you fully understand this and have a concrete need to use them.
 // Even then, try to minimize your use of them.
 //
+// 调试模式的日志宏
 // There are also "debug mode" logging macros like the ones above:
 //
 //   DLOG(INFO) << "Found cookies";
@@ -192,6 +199,7 @@ typedef unsigned __int64 uint64;
 //
 //   DLOG_EVERY_N(INFO, 10) << "Got the " << google::COUNTER << "th cookie";
 //
+// 如果时非调试模式，那这些调试级别的日志会在编译期就被忽略掉
 // All "debug mode" logging is compiled away to nothing for non-debug mode
 // compiles.
 //
@@ -202,12 +210,14 @@ typedef unsigned __int64 uint64;
 //
 // which is syntactic sugar for {,D}LOG_IF(FATAL, assert fails) << assertion;
 //
+// 自定义级别的日志模式
 // There are "verbose level" logging macros.  They look like
 //
 //   VLOG(1) << "I'm printed when you run the program with --v=1 or more";
 //   VLOG(2) << "I'm printed when you run the program with --v=2 or more";
 //
 // These always log at the INFO log level (when they log at all).
+// 很强大
 // The verbose logging can also be turned on module-by-module.  For instance,
 //    --vmodule=mapreduce=2,file=1,gfs*=3 --v=0
 // will cause:
@@ -219,6 +229,7 @@ typedef unsigned __int64 uint64;
 // The wildcarding functionality shown by (c) supports both '*' (match
 // 0 or more characters) and '?' (match any single character) wildcards.
 //
+// 自定义级别的宏同样支持条件操作
 // There's also VLOG_IS_ON(n) "verbose level" condition macro. To be used as
 //
 //   if (VLOG_IS_ON(2)) {
@@ -253,15 +264,18 @@ typedef unsigned __int64 uint64;
 // Very important: logging a message at the FATAL severity level causes
 // the program to terminate (after the message is logged).
 //
+// 日志文件命名规则
 // Unless otherwise specified, logs will be written to the filename
 // "<program name>.<hostname>.<user name>.log.<severity level>.", followed
 // by the date, time, and pid (you can't prevent the date, time, and pid
 // from being in the filename).
 //
+// 选项
 // The logging code takes two flags:
 //     --v=#           set the verbose level
 //     --logtostderr   log all the messages to stderr instead of to logfiles
-
+//
+// 日志标准前缀格式如下
 // LOG LINE PREFIX FORMAT
 //
 // Log lines have this form:
@@ -374,6 +388,8 @@ DECLARE_bool(stop_logging_if_full_disk);
 // LOG(INFO) and its ilk are used all over our code, it's
 // better to have compact code for these operations.
 
+// 每次 LOG(INFO) << "MSG" 其实就等于：
+// google::LogMessage(__FILE__, __LINE__).stream() << "MSG"
 #if GOOGLE_STRIP_LOG == 0
 #define COMPACT_GOOGLE_LOG_INFO google::LogMessage( \
       __FILE__, __LINE__)
@@ -472,6 +488,9 @@ DECLARE_bool(stop_logging_if_full_disk);
   }
 #endif
 
+// 这各宏就是GLOG的最基础用法的入口了, 使用了C++流的方式输出日志内容
+// 每次输出都会初始化一个实例,具体请看宏COMPACT_GOOGLE_LOG_INFO的定义
+//
 // We use the preprocessor's merging operator, "##", so that, e.g.,
 // LOG(INFO) becomes the token GOOGLE_LOG_INFO.  There's some funny
 // subtle difference between ostream member streaming functions (e.g.,
@@ -1078,6 +1097,7 @@ const LogSeverity GLOG_0 = GLOG_ERROR;
 
 namespace base_logging {
 
+// @1Feng Why do this?
 // LogMessage::LogStream is a std::ostream backed by this streambuf.
 // This class ignores overflow and leaves two bytes at the end of the
 // buffer to allow for a '\n' and '\0'.
@@ -1099,6 +1119,7 @@ class GOOGLE_GLOG_DLL_DECL LogStreamBuf : public std::streambuf {
 
 }  // namespace base_logging
 
+// 也就是说每次写入操作时在LogMessage实例析构的时候触发的
 //
 // This class more or less represents a particular log message.  You
 // create an instance of LogMessage and then stream stuff to it.
@@ -1111,6 +1132,7 @@ class GOOGLE_GLOG_DLL_DECL LogStreamBuf : public std::streambuf {
 class GOOGLE_GLOG_DLL_DECL LogMessage {
 public:
   enum {
+    // 通过这个参数来关闭日志的前缀格式
     // Passing kNoLogPrefix for the line number disables the
     // log-message prefix. Useful for using the LogMessage
     // infrastructure as a printing utility. See also the --log_prefix
@@ -1133,6 +1155,7 @@ public:
 # pragma warning(default: 4275)
 #endif
   public:
+    // 继承自std::ostream
     LogStream(char *buf, int len, int ctr)
         : std::ostream(NULL),
           streambuf_(buf, len),
@@ -1151,7 +1174,7 @@ public:
     char* str() const { return pbase(); }
 
   private:
-    base_logging::LogStreamBuf streambuf_;
+    base_logging::LogStreamBuf streambuf_; // 继承自std::streambuf
     int ctr_;  // Counter hack (for the LOG_EVERY_X() macro)
     LogStream *self_;  // Consistency check hack
   };
@@ -1203,6 +1226,7 @@ public:
 
   ~LogMessage();
 
+  // 只能被调用一次，一般是在析构函数里调用
   // Flush a buffered message to the sink set in the constructor.  Always
   // called by the destructor, it may also be called from elsewhere if
   // needed.  Only the first call is actioned; any later ones are ignored.
@@ -1352,6 +1376,7 @@ GOOGLE_GLOG_DLL_DECL void SetLogDestination(LogSeverity severity,
 GOOGLE_GLOG_DLL_DECL void SetLogSymlink(LogSeverity severity,
                                         const char* symlink_basename);
 
+// LogSink用来将日志输出到其他你所需要的任何地方
 //
 // Used to send logs to some other kind of destination
 // Users should subclass LogSink and override send to do whatever they want.
